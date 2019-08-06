@@ -33,7 +33,7 @@ if __name__ == "__main__":
                   r1=args['r1'], r2=args['r2'], lr=args['lr'], mf_dim=args['mf_dim'], K=args['K'])
     cmd = str(model)
     print(("Dataset:" + dataset + "\n" + cmd))
-    W = np.ones(intMat.shape) #TODO: test
+    W = np.ones(intMat.shape)  # TODO: test
     W[:, np.where(intMat.sum(0) == 0)] = 0
     W[np.where(intMat.sum(1) == 0), :] = 0
     model.fix_model(W, intMat, A_sim, B_sim, 22)
@@ -46,6 +46,5 @@ if __name__ == "__main__":
     novel_pairs.columns = ['A', 'B', 'Probability']
     predicted_matrix = pd.DataFrame(data=model.P.copy(), index=A_names, columns=B_names)
 
-
-    # novel_pairs.to_excel('./Doc/dataset' + '_novel.xlsx')
-    # novel_pairs.to_excel('./Doc/dataset' + '_predicted_matrix.xlsx')
+    novel_pairs.to_excel(os.path.join(output_dir, dataset + '_novel.xlsx'))
+    predicted_matrix.to_excel(os.path.join(output_dir, dataset + '_predicted_matrix.xlsx'))
