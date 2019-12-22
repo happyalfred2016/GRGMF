@@ -3,6 +3,9 @@ import getopt
 from utils import *
 from grgmf import GRGMF
 import pandas as pd
+import logging
+logging.basicConfig(level='WARNING')
+
 
 if __name__ == "__main__":
     argv = sys.argv[1:]
@@ -32,7 +35,7 @@ if __name__ == "__main__":
     model = GRGMF(max_iter=args['max_iter'], c=args['c'], lamb=args['lamb'], beta=args['beta'],
                   r1=args['r1'], r2=args['r2'], lr=args['lr'], mf_dim=args['mf_dim'], K=args['K'])
     cmd = str(model)
-    print(("Dataset:" + dataset + "\n" + cmd))
+    logging.info(("Dataset:" + dataset + "\n" + cmd))
     W = np.ones(intMat.shape)  # TODO: test
     W[:, np.where(intMat.sum(0) == 0)] = 0
     W[np.where(intMat.sum(1) == 0), :] = 0

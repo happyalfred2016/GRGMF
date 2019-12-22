@@ -14,7 +14,7 @@ def load_data_from_file(dataset, folder):
             with open(filename, "r") as f:
                 line = f.readline()
                 while line != None and line != "":
-                    arr = np.array(line.split("\t"), dtype='int')
+                    arr = np.array(line.strip().split("\t"), dtype='int')
                     stat.append(sum(arr))
                     data.append(arr)
                     line = f.readline()
@@ -22,7 +22,7 @@ def load_data_from_file(dataset, folder):
             with open(filename, "r") as f:
                 line = f.readline()
                 while line != None and line != "":
-                    arr = line.split("\t")
+                    arr = line.strip().split("\t")
                     try:
                         arr = arr[1:]
                         arr = np.array(arr, dtype='int')
@@ -47,14 +47,14 @@ def load_data_from_file(dataset, folder):
             with open(filename, "r") as f:
                 line = f.readline()
                 while line != None and line != "":
-                    arr = np.array(line.split("\t"), dtype='float')
+                    arr = np.array(line.strip().split("\t"), dtype='float')
                     data.append(arr)
                     line = f.readline()
         except:
             with open(filename, "r") as f:
                 line = f.readline()
                 while line != None and line != "":
-                    arr = line.split("\t")
+                    arr = line.strip().split("\t")
                     try:
                         arr = arr[1:]
                         arr = np.array(arr, dtype='float')
@@ -86,3 +86,31 @@ def get_names(dataset, folder):
         if '' in B:
             B.remove('')
     return A, B
+
+
+def WKNKN(Y, SD, ST, K, ita):
+    Yd = np.zeros(Y.shape)
+    Yt = np.zeros(Y.shape)
+    wi = np.zeros((K,))
+    wj = np.zeros((K,))
+    num_drugs, num_targets = Y.shape
+    for i in np.arange(num_drugs):
+        dnn_i = np.argsort(SD[i,:])[::-1][1:K+1]
+        Zd = np.sum(SD[i, dnn_i])
+        for ii in np.arange(K):
+            wi[ii] = (ita ** (ii)) * SD[i,dnn_i[ii]]
+        if not np.isclose(Zd, 0.):
+            Yd[i,:] = np.sum(np.multiply(wi.reshape((K,1)), Y[dnn_i,:]), axis=0) / Zd
+    for j in np.arange(num_targets):
+        tnn_j = np.argsort(ST[j, :])[::-1][1:K+1]
+        Zt = np.sum(ST[j, tnn_j])
+        for jj in np.arange(K):
+            wj[jj] = (ita ** (jj)) * ST[j,tnn_j[jj]]
+        if not np.isclose(Zt, 0.):
+            Yt[:,j] = np.sum(np.multiply(wj.reshape((1,K)), Y[:,tnn_j]), axis=1) / Zt
+    Ydt = (Yd + Yt)/2
+    x, y = np.where(Ydt > Y)
+
+    Y_tem = Y.copy()
+    Y_tem[x, y] = Ydt[x, y]
+    return Y_tem
