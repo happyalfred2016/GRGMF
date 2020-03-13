@@ -14,25 +14,22 @@ npeps = np.finfo(float).eps
 add_eps = 0.01
 
 
-
 class GRGMF:
-    def __init__(self, K=5, max_iter=100, lr=0.01, lamb=0.1, mf_dim=50, beta=0.1, r1=0.5, r2=0.5, c=5, pre_end=True,
-                 cvs=None, verpose=10, resample=0, ita=0):
-        '''Initialize the instance
+    def __init__(self, k=5, max_iter=100, lr=0.01, lamb=0.1, K=50, beta=0.1, r1=0.5, r2=0.5, c=5, pre_end=True,
+                 cvs=None, eta=0):
+        '''Initialization
 
         Args:
-            K: Num of neighbors
-            max_iter: Maximum num of iteration
+            k: Number of neighbors
+            max_iter: Maximum number of iteration
             lr: learning rate
-            lamb: trade-off parameter for norm-2 regularization for matrix U and V
-            mf_dim: dimension of the subspace expanded by self-representing vectors(i.e. the dimension for MF)
-            beta: trade-off parameter for norm-2 regularization for matrix U and V
-            r1: trade-off parameter of graph regularization for nodes in A
-            r2: trade-off parameter of graph regularization for nodes in B
+            lamb: trade-off parameter for norm-2 regularization on matrix U and V
+            K: dimension of the subspace expanded by self-representing vectors(i.e. the dimension for MF)
+            beta: trade-off parameter for norm-2 regularization on matrix U and V
+            r1: trade-off parameter of graph regularization on nodes in A
+            r2: trade-off parameter of graph regularization on nodes in B
             c: constant of the important level for positive sample
             cvs: cross validation setting (1, 2 or 3)
-            verpose: verpose level(for standard output) TODO: remove in the future
-            resample: weather to resample the positive samples or not
         '''
         if torch.cuda.is_available():
             self.DEVICE = 'cuda'
@@ -40,10 +37,10 @@ class GRGMF:
         else:
             self.DEVICE = 'cpu'
             logging.warning('CUDA is not available, DEVICE=cpu')
-        self.K = K  # number of neighbors
+        self.k = k  # number of neighbors
         self.n = -1  # data tag
-        self.mf_dim = mf_dim
-        self.num_factors = mf_dim
+        self.K = K
+        self.num_factors = K
         self.max_iter = max_iter
         self.lr = lr
         self.lamb = lamb
@@ -53,10 +50,8 @@ class GRGMF:
         self.c = c
         self.loss = [[np.inf] for i in range(50)]
         self.cvs = cvs
-        self.verpose = verpose
-        self.resample = resample
-        self.WK = K  # let "K" in WKNKN be the same as K
-        self.ita = ita
+        self.WK = k
+        self.eta = eta
         if cvs:
             if cvs == 1:
                 self.imp1 = 3.
@@ -82,9 +77,6 @@ class GRGMF:
     def fix_model(self, W, intMat, A_sim, B_sim, seed=None):
         '''Train the MF model
 
-            Y=sigmoid(AUV^TB)
-            (i.e. Y = sigmoid(Z^A U V^T Z^B))
-
         Args:
             W: Mask for training set
             intMat: complete interaction matrix
@@ -98,13 +90,13 @@ class GRGMF:
 
         def loss_function(Y, W):
             '''
-            Return the current value of loss function
+            Return the value of loss function
             Args:
                 Y: interaction matrix
                 W: mask for training set
 
             Returns:
-                current value of loss function
+                value of loss function
             '''
             temp = mm(self.ZA, mm(self.U, mm(self.V.t(), self.ZB)))  # avoiding overflow
             logexp = torch.zeros(temp.shape, dtype=datatype, device=DEVICE)
@@ -138,9 +130,9 @@ class GRGMF:
         self.A_sim += self.imp1 * np.diag(np.diag(np.ones(A_sim.shape)))
         self.B_sim += self.imp2 * np.diag(np.diag(np.ones(B_sim.shape)))
 
-        # ## sparsification
-        self.A_sim = self.get_nearest_neighbors(self.A_sim, self.K + 1)
-        self.B_sim = self.get_nearest_neighbors(self.B_sim, self.K + 1)
+        # sparsification
+        self.A_sim = self.get_nearest_neighbors(self.A_sim, self.k + 1)
+        self.B_sim = self.get_nearest_neighbors(self.B_sim, self.k + 1)
 
         # symmetrization
         self.A_sim = (self.A_sim + self.A_sim.T) / 2.
@@ -150,7 +142,7 @@ class GRGMF:
         self.ZA = dot(np.diag(1. / np.sum(self.A_sim + add_eps, axis=1).flatten()), self.A_sim + add_eps)
         self.ZB = dot(self.B_sim + add_eps, np.diag(1. / np.sum(self.B_sim + add_eps, axis=0).flatten()))
 
-        # 2 initialization for U and V
+        # initialization for U and V
         prng = np.random.RandomState(seed)
         if seed != None:
             self.U = np.sqrt(1. / float(self.num_factors)) * prng.normal(size=(self.num_drugs, self.num_factors))
@@ -158,7 +150,7 @@ class GRGMF:
         else:
             self.U = np.sqrt(1. / float(self.num_factors)) * np.random.normal(size=(self.num_drugs, self.num_factors))
             self.V = np.sqrt(1. / float(self.num_factors)) * np.random.normal(size=(self.num_targets, self.num_factors))
-        u, s, v = np.linalg.svd(WKNKN(Y, A_sim, B_sim, self.WK, self.ita))
+        u, s, v = np.linalg.svd(WKNKN(Y, A_sim, B_sim, self.WK, self.eta))
         self.U[:, : min(self.num_factors, min(Y.shape))] = u[:, : min(self.num_factors, min(Y.shape))]
         self.V[:, : min(self.num_factors, min(Y.shape))] = v[:, :min(self.num_factors, min(Y.shape))]
         del u, s, v
@@ -292,8 +284,8 @@ class GRGMF:
             # Update ZA & ZB
             t1 = time()
             for n in range(30):
-                temp_p = ((mm(self.U, mm(self.V.t(), self.ZB))).t() + torch.abs(
-                    mm(self.U, mm(self.V.t(), self.ZB)).t())) * 0.5
+                temp_p = ((mm(self.U, mm(self.V.t(), self.ZB))).t()
+                          + torch.abs(mm(self.U, mm(self.V.t(), self.ZB)).t())) * 0.5
                 temp_n = (torch.abs(mm(self.U, mm(self.V.t(), self.ZB)).t())
                           - mm(self.U, mm(self.V.t(), self.ZB)).t()) * 0.5
                 UUT_p = (mm(self.U, self.U.t()) + torch.abs(mm(self.U, self.U.t()))) * 0.5
@@ -306,8 +298,8 @@ class GRGMF:
                         + c * mm(Y * W_, temp_p)
                         + 2. * r1 * mm(torch.diag(self.A_sim.sum(1)), mm(self.ZA, UUT_n))
                         + 2. * r1 * mm(self.A_sim, mm(self.ZA, UUT_p)))
-                temp_p = ((mm(self.ZA, mm(self.U, self.V.t()))).t() + torch.abs(
-                    (mm(self.ZA, mm(self.U, self.V.t()))).t())) * 0.5
+                temp_p = ((mm(self.ZA, mm(self.U, self.V.t()))).t()
+                          + torch.abs((mm(self.ZA, mm(self.U, self.V.t()))).t())) * 0.5
                 temp_n = (torch.abs(mm(self.ZA, mm(self.U, self.V.t())).t())
                           - (mm(self.ZA, mm(self.U, self.V.t()))).t()) * 0.5
                 VVT_p = (mm(self.V, self.V.t()) + torch.abs(mm(self.V, self.V.t()))) * 0.5
@@ -323,11 +315,11 @@ class GRGMF:
                         + 2. * r2 * mm(VVT_n, mm(self.ZB, torch.diag(self.B_sim.sum(1))))
                         + 2. * r2 * mm(VVT_p, mm(self.ZB, self.B_sim)))
                 temp = (self.ZA * (1. / (D_AP + eps))).sum(1).flatten()
-                D_SA = torch.diag(temp)  # refer to D superscript ZA
-                E_SA = (self.ZA * D_AN * (1. / (D_AP + eps))).sum(1).reshape(self.num_drugs, 1).repeat(1,
-                                                                                                      self.num_drugs)
+                D_SA = torch.diag(temp)
+                E_SA = (self.ZA * D_AN * (1. / (D_AP + eps))).sum(1).reshape(
+                    self.num_drugs, 1).repeat(1,self.num_drugs)
                 temp = (self.ZB * (1. / (D_BP + eps))).sum(0).flatten()
-                D_SB = torch.diag(temp)  # refer to D superscript ZB
+                D_SB = torch.diag(temp)
                 E_SB = (self.ZB * D_BN * (1. / (D_BP + eps))).sum(0).reshape(1, self.num_targets).repeat(
                     self.num_targets, 1)
 
@@ -336,7 +328,7 @@ class GRGMF:
                 Y_p = mm(self.ZA, mm(self.U, mm(self.V.t(), self.ZB)))
                 P = torch.sigmoid(Y_p)
 
-                # break the loop if reach converge condition
+                # break the loop if reach convergence condition
                 if ((torch.norm(self.ZA - self.A_old, p=1) / torch.norm(self.A_old, p=1))
                     < 0.01) and ((torch.norm(self.ZB - self.B_old, p=1) / torch.norm(self.B_old, p=1)) < 0.01):
                     logging.debug("AB update num: %d" % n)
@@ -344,7 +336,7 @@ class GRGMF:
                 self.A_old.copy_(self.ZA)
                 self.B_old.copy_(self.ZB)
 
-            # store matrix U, V, ZA and ZB for the currently lowest loss for later use
+            # store matrix U, V, ZA and ZB for the currently lowest loss
             self.loss[self.n].append(loss_function(Y, W_all))
             if self.loss[self.n][-1] < minloss:
                 ZA_best.copy_(self.ZA)
@@ -353,7 +345,7 @@ class GRGMF:
                 V_best.copy_(self.V)
                 minloss = self.loss[self.n][-1]
 
-            # if diverge reinitialize U, V, ZA, ZB and optimizer with half the present learning rate
+            # reinitialize U, V, ZA, ZB and optimizer with half the present learning rate if loss diverge
             if self.loss[self.n][-1] > self.loss[self.n][1] * 2:
                 if not patient:
                     with open('./error.log', 'a') as error:
@@ -381,14 +373,13 @@ class GRGMF:
                                 "best loss=%.2f" % (self.n, lr * 2, patient + 1, min(self.loss[self.n])))
                 break
             else:
-                # training stop if reach converge condition
                 delta_loss = abs(self.loss[self.n][-1] - self.loss[self.n][-2]) / abs(self.loss[self.n][-2])
                 logging.info(('Delta_loss: %.4f' % delta_loss))
                 if delta_loss < 1e-4:
                     numiter = torch.tensor(data=0, dtype=torch.int, device=DEVICE)
             numiter -= 1
 
-        # retrieve the best U, V, ZA and ZB (with lowest loss)
+        # retrieve the best U, V, ZA and ZB (at lowest loss)
         if self.loss[self.n][-1] > minloss:
             self.ZA = ZA_best
             self.ZB = ZB_best
@@ -398,15 +389,14 @@ class GRGMF:
         Y_p = mm(self.ZA, mm(self.U, mm(self.V.t(), self.ZB)))
         self.P = torch.sigmoid(Y_p).numpy()
 
-
     def predict_scores(self, test_data, N):
-        '''return the predicting label of input data
+        '''return the predicted labels of input data
 
         Args:
             test_data: input data
 
         Returns:
-            predicting label
+            predicted labels
         '''
 
         # Evaluation
@@ -427,17 +417,11 @@ class GRGMF:
             Laplacian matrix of S
         '''
         x = S.sum(1)
-        L = torch.diag(x) - S  # neighborhood regularization matrix
+        L = torch.diag(x) - S
         return L
 
     class adam_opt:
         def __init__(self, lr, shape, DEVICE):
-            '''Adam optimizer
-
-            Args:
-                lr:
-                shape:
-            '''
             self.alpha = torch.tensor(data=lr, dtype=datatype, device=DEVICE)
             self.beta1 = torch.tensor(data=0.9, dtype=datatype, device=DEVICE)
             self.beta2 = torch.tensor(data=0.999, dtype=datatype, device=DEVICE)
@@ -448,12 +432,10 @@ class GRGMF:
             self.v0 = torch.zeros(shape, dtype=datatype, device=DEVICE)
 
         def delta(self, deriv, iter):
-            # in case pass a matrix type grad
             self.t = (iter + 1).type(datatype)
             grad = deriv
             m_t = self.beta1 * self.m0 + (1 - self.beta1) * grad
             v_t = self.beta2 * self.v0 + (1 - self.beta2) * grad ** 2
-            # In this project the number of iteration is too big so let t divided by a number
             m_cap = m_t / (1. - self.beta1 ** (self.t / 1.) + self.eps)
             v_cap = v_t / (1. - self.beta2 ** (self.t / 1.) + self.eps)
             update = - self.alpha * m_cap / (torch.sqrt(v_cap) + self.epsilon + self.eps)
@@ -462,7 +444,7 @@ class GRGMF:
             return update
 
     def __str__(self):
-        return ("Model: ADPGMF, cvs: %s, K: %s, mf_dim: %s, lamb:%s, beta:%s, c:%s, resample:%d, r1:%s, r2:%s, ita:%s "
-                "imp1:%s, imp2: %s, max_iter: %s, lr: %s" % (self.cvs, self.K, self.mf_dim, self.lamb, self.beta,
-                                                             self.c, self.resample, self.r1, self.r2, self.ita,
-                                                             self.imp1, self.imp2, self.max_iter, self.lr))
+        return ("Model: ADPGMF, cvs: %s, k: %s, K: %s, lamb:%s, beta:%s, c:%s, r1:%s, r2:%s, eta:%s "
+                "imp1:%s, imp2: %s, max_iter: %s, lr: %s" % (self.cvs, self.k, self.K, self.lamb, self.beta, self.c,
+                                                             self.r1, self.r2, self.eta, self.imp1, self.imp2,
+                                                             self.max_iter, self.lr))

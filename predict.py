@@ -24,8 +24,8 @@ if __name__ == "__main__":
             model_settings = [s.split('=') for s in str(arg).split()]
     if not os.path.isdir(output_dir):
         os.makedirs(output_dir)
-    args = {'K': 5, 'max_iter': 100, 'lr': 0.1, 'lamb': 0.0333, 'beta': 4., 'r1': 0.5, 'r2': 1.,
-            'mf_dim': 150, 'c': 5}
+    args = {'k': 5, 'max_iter': 100, 'lr': 0.1, 'lamb': 0.0333, 'beta': 4., 'r1': 0.5, 'r2': 1.,
+            'K': 150, 'c': 5, 'eta': 0.5}
     for key, val in model_settings:
         args[key] = eval(val)
 
@@ -33,10 +33,10 @@ if __name__ == "__main__":
     A_names, B_names = get_names(dataset, data_dir)
 
     model = GRGMF(max_iter=args['max_iter'], c=args['c'], lamb=args['lamb'], beta=args['beta'],
-                  r1=args['r1'], r2=args['r2'], lr=args['lr'], mf_dim=args['mf_dim'], K=args['K'])
+                  r1=args['r1'], r2=args['r2'], lr=args['lr'], K=args['K'], k=args['k'], eta=args['eta'])
     cmd = str(model)
     logging.info(("Dataset:" + dataset + "\n" + cmd))
-    W = np.ones(intMat.shape)  # TODO: test
+    W = np.ones(intMat.shape)
     W[:, np.where(intMat.sum(0) == 0)] = 0
     W[np.where(intMat.sum(1) == 0), :] = 0
     model.fix_model(W, intMat, A_sim, B_sim, 22)
